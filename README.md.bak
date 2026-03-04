@@ -1,0 +1,17 @@
+## 运行
+
+docker-compose up -d
+
+## load_tpch_to_hive
+从指定目录导入数据到hive中
+
+## hadoop-conf hadoop-home hadoop-native
+配置hive
+
+## 下载preso-jar
+  $ wget https://repo1.maven.org/maven2/io/prestosql/presto-cli/308/presto-cli-308-executable.jar
+  $ mv presto-cli-308-executable.jar presto.jar
+  $ chmod +x presto.jar
+
+## start.sh 
+  连接presto,执行命令

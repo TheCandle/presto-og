@@ -1,0 +1,9 @@
+-ea
+-Xmx5G
+-Djdk.attach.allowAttachSelf=true
+-XX:+ExitOnOutOfMemoryError
+-Duser.timezone=America/Bahia_Banderas
+-Dguice_require_explicit_bindings=false
+-Dhive.security=legacy
+--add-opens
+java.base/java.net=ALL-UNNAMED
