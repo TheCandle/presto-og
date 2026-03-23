@@ -10,8 +10,8 @@
 set -e  # 遇到错误立即退出
 
 # -------------------- 配置参数 --------------------
-HIVE_CONTAINER="docker-hive-hive-server-1"      # Hive 容器名
-LOCAL_DATA_DIR="/home/candle/Project/pg/tpchdata01"  # 宿主机数据目录
+HIVE_CONTAINER="presto-og-hive-server-1"      # Hive 容器名
+LOCAL_DATA_DIR="/home/candle/og-tpch-workspace/tpch-data"  # 宿主机数据目录
 CONTAINER_DATA_DIR="/opt/tpch-data"             # 容器内临时数据目录
 HIVE_DB="tpch_test"                              # Hive 数据库名
 KEEP_TEXT_TABLES=false                           # 是否保留文本表 (true/false)
@@ -37,18 +37,24 @@ echo "本地数据目录: $LOCAL_DATA_DIR"
 echo "目标数据库: $HIVE_DB"
 echo "========================================="
 
-# 1. 在容器内创建数据目录
-echo "[1/7] 在容器内创建数据目录..."
-docker exec $HIVE_CONTAINER mkdir -p $CONTAINER_DATA_DIR
+# # 1. 在容器内创建数据目录
+# echo "[1/7] 在容器内创建数据目录..."
+# docker exec $HIVE_CONTAINER mkdir -p $CONTAINER_DATA_DIR
 
-# 2. 复制数据文件到容器
-echo "[2/7] 复制数据文件到容器..."
-docker cp $LOCAL_DATA_DIR/. $HIVE_CONTAINER:$CONTAINER_DATA_DIR/
-echo "文件复制完成。"
+# # 2. 复制数据文件到容器
+# echo "[2/7] 复制数据文件到容器..."
+# docker cp $LOCAL_DATA_DIR/. $HIVE_CONTAINER:$CONTAINER_DATA_DIR/
+# echo "文件复制完成。"
+
+
+# 直接挂载数据文件
 
 # 3. 验证文件列表
 echo "[3/7] 验证文件列表..."
 docker exec $HIVE_CONTAINER ls -l $CONTAINER_DATA_DIR/
+
+
+
 
 # 4. 构建 Hive 初始化 SQL
 echo "[4/7] 准备 Hive 执行脚本..."

@@ -7,10 +7,24 @@ services:
       - namenode:/hadoop/dfs/name
     environment:
       - CLUSTER_NAME=test
+    #   - HADOOP_HEAPSIZE=1024          # 限制 namenode JVM 堆大小为 1GB
     env_file:
       - ./hadoop-hive.env
     ports:
       - "50070:50070"
+    # ulimits:
+    #   nofile:
+    #     soft: 65536
+    #     hard: 65536
+    # mem_limit: 4g  # 同时确保内存充足
+    # mem_limit: 2g
+    # ulimits:
+    #   nofile:
+    #     soft: 65536                     # 文件描述符软限制
+    #     hard: 65536                     # 文件描述符硬限制
+    #   nproc:
+    #     soft: 65536                     # 进程数软限制
+    #     hard: 65536                     # 进程数硬限制
   datanode:
     image: thecandle66/hadoop-datanode:2.0.0-hadoop2.7.4-java8
     volumes:
@@ -21,17 +35,28 @@ services:
       SERVICE_PRECONDITION: "namenode:50070"
     ports:
       - "50075:50075"
+    # ulimits:
+    #   nofile:
+    #     soft: 65536
+    #     hard: 65536
+    # mem_limit: 4g
   hive-server:
     image: thecandle66/hive:2.3.2-postgresql-metastore
     env_file:
       - ./hadoop-hive.env
     volumes:
       - ./init_hive.sh:/opt/hive/init_hive.sh  # 将脚本挂载到容器中 
+      - /home/candle/og-tpch-workspace/tpch-data:/opt/tpch-data 
     environment: 
       HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
       SERVICE_PRECONDITION: "hive-metastore:9083"
     ports:
       - "10000:10000"
+    # ulimits:
+    #   nofile:
+    #     soft: 65536
+    #     hard: 65536
+    # mem_limit: 2g        # 根据实际需求调整，建议至少 2GB
   hive-metastore:
     image: thecandle66/hive:2.3.2-postgresql-metastore
     env_file:
@@ -41,20 +66,25 @@ services:
       SERVICE_PRECONDITION: "namenode:50070 datanode:50075 hive-metastore-postgresql:5432"
     ports:
       - "9083:9083"
+    # ulimits:
+    #   nofile:
+    #     soft: 65536
+    #     hard: 65536
+    # mem_limit: 2g        # 根据实际需求调整，建议至少 2GB
   hive-metastore-postgresql:
     image: thecandle66/hive-metastore-postgresql:2.3.0
   
-  presto-coordinator:
-    image: shawnzhu/prestodb:0.181
-    ports:
-      - "8080:8080"
+  # presto-coordinator:
+  #   image: shawnzhu/prestodb:0.181
+  #   ports:
+  #     - "8080:8080"
   
   coordinator:                                # 若需 PrestoDB，替换为 prestodb/presto 镜像
     # image: presto-launcher:latest
     image: thecandle66/presto-launcher:latest
     hostname: localhost
     ports:
-      - "8082:8082"
+      - "0.0.0.0:8082:8082"
     volumes:
       - ./coordinator/etc:/opt/presto/etc
     # depends_on:
@@ -84,27 +114,27 @@ services:
       - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
     entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
 
-  worker-2:
-    image: thecandle66/prestissimo-runtime:centos9
-    platform: linux/amd64
-    container_name: prestissimo-worker-2
-    hostname: worker-2
-    environment:
-      - SERVER_HOST=coordinator
-      - SERVER_PORT=8082
-      - WORKER_PORT=7778
-      - HADOOP_HOME=/opt/hadoop-2.7.4
-      - HADOOP_CONF_DIR=/etc/hadoop/conf
-      - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
-    depends_on:
-      - coordinator
-    volumes:
-      - ./hadoop-home:/opt/hadoop-2.7.4:ro
-      - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
-      - ./worker-2/etc:/opt/presto-server/etc
-      - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
-      - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
-    entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+  # worker-2:
+  #   image: thecandle66/prestissimo-runtime:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-2
+  #   hostname: worker-2
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7778
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-2/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
   
   presto-cli:
     image: my-presto-cli:latest

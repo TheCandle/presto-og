@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-Presto TPCH 测试脚本（executionTime - totalPlanningTime）
-- 跟随 nextUri 获取最终响应（保证稳定性）
-- 同时记录 queryId，尝试从 /v1/query/{queryId} 获取 executionTime 和 totalPlanningTime
-- 若两者都存在则计算差值作为执行时间，否则回退到最终响应的 wallTimeMillis
-支持多并行度、预热、多次运行
+Presto TPCH 测试脚本（executionTime - totalPlanningTime）with detailed stage/operator stats.
+- Follows nextUri to get final response.
+- Records queryId and fetches full queryStats from /v1/query/{queryId}.
+- Extracts stage and operator metrics and saves to separate CSV files.
+- Optionally saves raw JSON stats for each run.
+
+Usage examples:
+  ./tpch_test.py --presto-url http://presto-coord:8080 --query-dir ./tpch-queries --dop-list 1,2,4 --runs 3
+  ./tpch_test.py --save-stats-dir ./stats --stage-detail stage.csv --operator-detail operator.csv
 """
 
 import argparse
@@ -13,10 +17,11 @@ import json
 import os
 import sys
 import time
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 
 import requests
 
+# Default values
 DEFAULT_PRESTO_URL = "http://localhost:8082"
 DEFAULT_CATALOG = "hive"
 DEFAULT_SCHEMA = "tpch_test"
@@ -28,33 +33,51 @@ DEFAULT_QUERY_DIR = "./tpch-queries"
 DEFAULT_OUTPUT = "presto_results.csv"
 DEFAULT_DETAIL = "presto_detail.csv"
 DEFAULT_TIMEOUT = 600
+DEFAULT_STATS_DIR = "./tpch-stats"          # if set, raw JSON is saved
+DEFAULT_STAGE_DETAIL = "stage_detail.csv"
+DEFAULT_OPERATOR_DETAIL = "operator_detail.csv"
+
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Presto TPCH 测试脚本（executionTime - totalPlanningTime）")
-    parser.add_argument("--presto-url", default=DEFAULT_PRESTO_URL, help="Presto Coordinator URL")
-    parser.add_argument("--catalog", default=DEFAULT_CATALOG, help="Catalog 名称")
-    parser.add_argument("--schema", default=DEFAULT_SCHEMA, help="Schema 名称")
-    parser.add_argument("--query-dir", default=DEFAULT_QUERY_DIR, help="查询文件目录")
+    parser = argparse.ArgumentParser(description="Presto TPCH 测试脚本 with detailed stage/operator stats")
+    parser.add_argument("--presto-url", default=DEFAULT_PRESTO_URL,
+                        help="Presto Coordinator URL (default: %(default)s)")
+    parser.add_argument("--catalog", default=DEFAULT_CATALOG,
+                        help="Catalog name (default: %(default)s)")
+    parser.add_argument("--schema", default=DEFAULT_SCHEMA,
+                        help="Schema name (default: %(default)s)")
+    parser.add_argument("--query-dir", default=DEFAULT_QUERY_DIR,
+                        help="Directory containing q1.sql ... q22.sql (default: %(default)s)")
     parser.add_argument("--dop-list", default=DEFAULT_DOP_LIST,
-                        help="逗号分隔的 task_concurrency 值列表，例如 '1,2,4,8'")
+                        help="Comma-separated task_concurrency values (default: %(default)s)")
     parser.add_argument("--session", action="append", dest="session_params", default=[],
-                        help="额外的会话参数，例如 'join_distribution_type=BROADCAST'，可多次使用")
-    parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP, help="预热次数")
-    parser.add_argument("--runs", type=int, default=DEFAULT_RUNS, help="正式运行次数")
-    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="查询超时时间（秒）")
-    parser.add_argument("--output", default=DEFAULT_OUTPUT, help="摘要输出文件 (CSV)")
-    parser.add_argument("--detail", default=DEFAULT_DETAIL, help="详细输出文件 (CSV)")
+                        help="Additional session parameters, e.g. 'join_distribution_type=BROADCAST' (can be repeated)")
+    parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP,
+                        help="Number of warm-up runs per query/dop (default: %(default)s)")
+    parser.add_argument("--runs", type=int, default=DEFAULT_RUNS,
+                        help="Number of measured runs per query/dop (default: %(default)s)")
+    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
+                        help="Query timeout in seconds (default: %(default)s)")
+    parser.add_argument("--output", default=DEFAULT_OUTPUT,
+                        help="Summary CSV file (default: %(default)s)")
+    parser.add_argument("--detail", default=DEFAULT_DETAIL,
+                        help="Per‑run CSV file (default: %(default)s)")
+
+    # New arguments for detailed statistics
+    parser.add_argument("--save-stats-dir", default=DEFAULT_STATS_DIR,
+                        help="If set, save full queryStats JSON to this directory (one file per run)")
+    parser.add_argument("--stage-detail", default=DEFAULT_STAGE_DETAIL,
+                        help="Stage‑level detail CSV file (default: %(default)s)")
+    parser.add_argument("--operator-detail", default=DEFAULT_OPERATOR_DETAIL,
+                        help="Operator‑level detail CSV file (default: %(default)s)")
+
     return parser.parse_args()
 
-def build_session_headers(base_params: List[str], dop: int) -> List[str]:
-    dop_param = f"task_concurrency={dop}"
-    filtered = [p for p in base_params if not p.startswith("task_concurrency=")]
-    filtered.append(dop_param)
-    return filtered
 
 def parse_time_str(time_str: str) -> Optional[float]:
     """
-    解析 Presto 时间字符串（如 "1.23s", "456ms"）为毫秒数。
+    Parse Presto time strings like "1.23s", "456ms", "2.5m" into milliseconds.
+    Returns None if parsing fails.
     """
     if not time_str:
         return None
@@ -71,10 +94,20 @@ def parse_time_str(time_str: str) -> Optional[float]:
         except ValueError:
             return None
 
+
+def build_session_headers(base_params: List[str], dop: int) -> List[str]:
+    """Add task_concurrency to session parameters, replacing any existing."""
+    dop_param = f"max_drivers_per_task={dop}"
+    filtered = [p for p in base_params if not p.startswith("max_drivers_per_task=")]
+    filtered.append(dop_param)
+    return filtered
+
+
 def execute_query_follow_next_uri(presto_url: str, catalog: str, schema: str, sql: str,
                                    session_params: List[str], timeout: int) -> Tuple[Optional[Dict], Optional[str]]:
     """
-    提交查询，持续跟随 nextUri 直到查询结束，返回最终响应 JSON 和 queryId。
+    Submit a query and follow nextUri until completion.
+    Returns (final_response_json, query_id) or (None, None) on error/timeout.
     """
     headers = {
         "X-Presto-Catalog": catalog,
@@ -83,8 +116,7 @@ def execute_query_follow_next_uri(presto_url: str, catalog: str, schema: str, sq
         "Accept": "application/json"
     }
     if session_params:
-        session_str = ",".join(session_params)
-        headers["X-Presto-Session"] = session_str
+        headers["X-Presto-Session"] = ",".join(session_params)
 
     url = presto_url + "/v1/statement"
     method = "POST"
@@ -93,31 +125,30 @@ def execute_query_follow_next_uri(presto_url: str, catalog: str, schema: str, sq
 
     start_time = time.time()
     follow_count = 0
-    max_follows = 100
 
     while True:
         if time.time() - start_time > timeout:
-            print(f"DEBUG: 查询执行超时 ({timeout}秒)", file=sys.stderr)
+            print(f"DEBUG: Query timeout after {timeout}s", file=sys.stderr)
             return None, None
 
         follow_count += 1
         try:
             if method == "POST":
-                resp = requests.post(url, data=data, headers=headers, timeout=30)
+                resp = requests.post(url, data=data, headers=headers, timeout=300)
             else:
-                resp = requests.get(url, headers=headers, timeout=30)
+                resp = requests.get(url, headers=headers, timeout=300)
             resp.raise_for_status()
             response_json = resp.json()
         except Exception as e:
-            print(f"DEBUG: 请求异常: {e}", file=sys.stderr)
+            print(f"DEBUG: Request failed: {e}", file=sys.stderr)
             return None, None
 
-        # 如果是第一次响应，尝试获取 queryId
+        # Capture query ID from first response
         if follow_count == 1:
             query_id = response_json.get("id") or response_json.get("queryId")
 
         if "error" in response_json:
-            print(f"DEBUG: 查询错误: {response_json['error']}", file=sys.stderr)
+            print(f"DEBUG: Query error: {response_json['error']}", file=sys.stderr)
             return None, None
 
         if "nextUri" in response_json:
@@ -126,106 +157,180 @@ def execute_query_follow_next_uri(presto_url: str, catalog: str, schema: str, sq
             data = None
             continue
         else:
-            print(f"DEBUG: 查询完成，共跟随 {follow_count} 步，queryId={query_id}", file=sys.stderr)
+            print(f"DEBUG: Query finished after {follow_count} follow(s), queryId={query_id}", file=sys.stderr)
             return response_json, query_id
 
-def get_query_times_by_id(presto_url: str, query_id: str) -> Tuple[Optional[float], Optional[float]]:
+
+def fetch_query_stats(presto_url: str, query_id: str) -> Optional[Dict[str, Any]]:
     """
-    通过 /v1/query/{queryId} 获取 executionTime 和 totalPlanningTime，返回毫秒数。
-    如果查询历史不可用（410）或解析失败，对应位置返回 None。
+    Fetch the full query statistics JSON from /v1/query/{queryId}.
+    Returns None if unavailable (410) or on error.
     """
     if not query_id:
-        return None, None
+        return None
     url = f"{presto_url.rstrip('/')}/v1/query/{query_id}"
     try:
         resp = requests.get(url, timeout=10)
         if resp.status_code == 410:
-            print(f"DEBUG: 查询 {query_id} 的历史信息已不可用 (410)", file=sys.stderr)
-            return None, None
+            print(f"DEBUG: Query {query_id} stats expired (410)", file=sys.stderr)
+            return None
         resp.raise_for_status()
-        data = resp.json()
+        return resp.json()
     except Exception as e:
-        print(f"DEBUG: 获取 queryStats 失败: {e}", file=sys.stderr)
-        return None, None
+        print(f"DEBUG: Failed to fetch query stats: {e}", file=sys.stderr)
+        return None
 
-    exec_time = None
-    plan_time = None
-    try:
-        exec_time_str = data["queryStats"]["executionTime"]
-        exec_time = parse_time_str(exec_time_str)
-    except KeyError:
-        pass
-
-    try:
-        plan_time_str = data["queryStats"]["totalPlanningTime"]
-        plan_time = parse_time_str(plan_time_str)
-    except KeyError:
-        pass
-
-    return exec_time, plan_time
 
 def extract_wall_time(final_response: Dict) -> Optional[float]:
-    """
-    从最终响应中提取 wallTimeMillis。
-    """
+    """Extract wallTimeMillis from the final query response."""
     try:
         stats = final_response["stats"]
         if stats.get("state") != "FINISHED":
-            print(f"DEBUG: 查询未成功完成，状态: {stats.get('state')}", file=sys.stderr)
+            print(f"DEBUG: Query not finished, state: {stats.get('state')}", file=sys.stderr)
             return None
         return float(stats["wallTimeMillis"])
     except (KeyError, ValueError, TypeError) as e:
-        print(f"DEBUG: 提取 wallTimeMillis 失败: {e}", file=sys.stderr)
+        print(f"DEBUG: Failed to extract wallTimeMillis: {e}", file=sys.stderr)
         return None
 
+
+def extract_stage_metrics(stage: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract relevant metrics from a stage dict."""
+    stats = stage.get("stageStats", {})
+    return {
+        "stageId": stage.get("stageId"),
+        "state": stage.get("state"),
+        "totalCpuTime_ms": parse_time_str(stats.get("totalCpuTime")),
+        "totalScheduledTime_ms": parse_time_str(stats.get("totalScheduledTime")),
+        "peakMemory_bytes": stats.get("peakMemory"),
+        "physicalInputBytes": stats.get("physicalInputBytes"),
+        "physicalInputRows": stats.get("physicalInputRows"),
+        "processedInputBytes": stats.get("processedInputBytes"),
+        "processedInputRows": stats.get("processedInputRows"),
+        "spilledBytes": stats.get("spilledBytes"),
+    }
+
+
+def extract_operator_metrics(operator: Dict[str, Any], stage_id: str) -> Dict[str, Any]:
+    """Extract relevant metrics from an operator summary dict."""
+    return {
+        "stageId": stage_id,
+        "operatorId": operator.get("operatorId"),
+        "operatorType": operator.get("operatorType"),
+        "totalCpuTime_ms": parse_time_str(operator.get("totalCpuTime")),
+        "totalScheduledTime_ms": parse_time_str(operator.get("totalScheduledTime")),
+        "inputRows": operator.get("inputRows"),
+        "inputBytes": operator.get("inputBytes"),
+        "outputRows": operator.get("outputRows"),
+        "outputBytes": operator.get("outputBytes"),
+        "peakMemory_bytes": operator.get("peakMemory"),
+    }
+
+
 def run_query_once_subtract(presto_url: str, catalog: str, schema: str, sql: str,
-                            session_params: List[str], timeout: int) -> Optional[float]:
+                            session_params: List[str], timeout: int,
+                            run_number: int, dop: int, query_id_num: int,
+                            args) -> Optional[float]:
     """
-    混合执行：
-    1. 跟随 nextUri 获取最终响应和 queryId。
-    2. 尝试通过 queryId 获取 executionTime 和 totalPlanningTime。
-    3. 如果两者都存在，计算差值（executionTime - totalPlanningTime）作为执行时间。
-    4. 否则回退到 wallTimeMillis。
+    Execute one query run:
+    - Follow nextUri to get final response and queryId.
+    - Fetch full queryStats.
+    - Compute primary runtime (executionTime - planningTime, fallback to wallTime).
+    - Save detailed stage/operator metrics to CSV.
+    - Optionally save raw JSON stats.
+    Returns the primary runtime in milliseconds, or None on failure.
     """
     final_resp, query_id = execute_query_follow_next_uri(presto_url, catalog, schema, sql,
                                                           session_params, timeout)
     if not final_resp:
         return None
 
-    # 优先尝试获取 queryId 下的两个时间
-    if query_id:
-        exec_time, plan_time = get_query_times_by_id(presto_url, query_id)
+    # Fetch full stats (may be None if expired)
+    full_stats = fetch_query_stats(presto_url, query_id) if query_id else None
+
+    # Determine primary runtime
+    runtime = None
+    if full_stats:
+        exec_time = parse_time_str(full_stats.get("queryStats", {}).get("executionTime"))
+        plan_time = parse_time_str(full_stats.get("queryStats", {}).get("totalPlanningTime"))
         if exec_time is not None and plan_time is not None:
-            diff_time = exec_time - plan_time
-            if diff_time >= 0:
-                print(f"DEBUG: 使用 executionTime - totalPlanningTime = {diff_time:.2f} ms", file=sys.stderr)
-                return diff_time
-            else:
-                print(f"DEBUG: 差值 {diff_time:.2f} 为负，可能数据异常，回退", file=sys.stderr)
-        elif exec_time is not None:
-            print("DEBUG: 只有 executionTime，无法相减，回退", file=sys.stderr)
-        elif plan_time is not None:
-            print("DEBUG: 只有 totalPlanningTime，无法相减，回退", file=sys.stderr)
+            diff = exec_time - plan_time
+            if diff >= 0:
+                runtime = diff
+                print(f"DEBUG: Using executionTime - totalPlanningTime = {diff:.2f} ms", file=sys.stderr)
+    if runtime is None:
+        print(f"NONE runtime", file=sys.stderr)
+        runtime = None
 
-    # 回退到 wallTimeMillis
-    wall_time = extract_wall_time(final_resp)
-    if wall_time is not None:
-        print(f"DEBUG: 使用 wallTimeMillis 作为执行时间: {wall_time:.2f} ms", file=sys.stderr)
-        return wall_time
+    # Save detailed stats if available
+    if full_stats:
+        # Optionally write raw JSON
+        if args.save_stats_dir:
+            os.makedirs(args.save_stats_dir, exist_ok=True)
+            stats_file = os.path.join(args.save_stats_dir,
+                                      f"query_{query_id_num}_dop{dop}_run{run_number}.json")
+            with open(stats_file, "w") as f:
+                json.dump(full_stats, f, indent=2)
 
-    return None
+        # Extract stage and operator metrics
+        stages = full_stats.get("queryStats", {}).get("stages", [])
+        stage_rows = []
+        operator_rows = []
+        for stage in stages:
+            stage_metrics = extract_stage_metrics(stage)
+            stage_metrics.update({
+                "query": query_id_num,
+                "dop": dop,
+                "run_number": run_number,
+                "runtime_ms": runtime if runtime is not None else -1,
+            })
+            stage_rows.append(stage_metrics)
+
+            # Operators within this stage
+            for op in stage.get("stageStats", {}).get("operatorSummaries", []):
+                op_metrics = extract_operator_metrics(op, stage.get("stageId"))
+                op_metrics.update({
+                    "query": query_id_num,
+                    "dop": dop,
+                    "run_number": run_number,
+                    "runtime_ms": runtime if runtime is not None else -1,
+                })
+                operator_rows.append(op_metrics)
+
+        # Append stage details
+        if stage_rows:
+            file_exists = os.path.isfile(args.stage_detail)
+            with open(args.stage_detail, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=stage_rows[0].keys())
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerows(stage_rows)
+
+        # Append operator details
+        if operator_rows:
+            file_exists = os.path.isfile(args.operator_detail)
+            with open(args.operator_detail, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=operator_rows[0].keys())
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerows(operator_rows)
+
+    return runtime
+
 
 def main():
     args = parse_args()
 
+    # Parse dop list
     try:
         dop_values = [int(x.strip()) for x in args.dop_list.split(",")]
     except ValueError:
-        print(f"错误: 无法解析 dop-list '{args.dop_list}'", file=sys.stderr)
+        print(f"Error: Cannot parse dop-list '{args.dop_list}'", file=sys.stderr)
         sys.exit(1)
 
+    # Locate query files (q1.sql .. q22.sql)
     if not os.path.isdir(args.query_dir):
-        print(f"错误: 查询目录 {args.query_dir} 不存在", file=sys.stderr)
+        print(f"Error: Query directory {args.query_dir} does not exist", file=sys.stderr)
         sys.exit(1)
 
     query_files = []
@@ -235,83 +340,93 @@ def main():
         if os.path.isfile(fpath):
             query_files.append((i, fpath))
         else:
-            print(f"警告: 未找到查询文件 {fpath}，跳过", file=sys.stderr)
+            print(f"Warning: Query file {fpath} not found, skipping", file=sys.stderr)
 
     if not query_files:
-        print("错误: 未找到任何查询文件", file=sys.stderr)
+        print("Error: No query files found", file=sys.stderr)
         sys.exit(1)
 
-    summary_file = args.output
-    detail_file = args.detail
-
-    summary_header = ["query", "dop", "runs", "avg_time_ms", "min_time_ms", "max_time_ms", "run_times_ms"]
-    detail_header = ["query", "dop", "run_number", "runtime_ms"]
-
-    with open(summary_file, "w", newline="") as f:
+    # Prepare summary and per‑run CSV files (headers only)
+    with open(args.output, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(summary_header)
-    with open(detail_file, "w", newline="") as f:
+        writer.writerow(["query", "dop", "runs", "avg_time_ms", "min_time_ms", "max_time_ms", "run_times_ms"])
+    with open(args.detail, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(detail_header)
+        writer.writerow(["query", "dop", "run_number", "runtime_ms"])
 
-    print(f"开始 TPCH 测试（executionTime - totalPlanningTime）: {args.presto_url}, catalog={args.catalog}, schema={args.schema}")
-    print(f"并行度列表: {dop_values}")
-    print(f"基础会话参数: {args.session_params}")
-    print(f"预热 {args.warmup} 次, 运行 {args.runs} 次")
+    print(f"Starting TPCH benchmark (executionTime - totalPlanningTime)")
+    print(f"Presto URL: {args.presto_url}, catalog={args.catalog}, schema={args.schema}")
+    print(f"Parallelism values: {dop_values}")
+    print(f"Base session params: {args.session_params}")
+    print(f"Warmup: {args.warmup}, runs: {args.runs}")
+    if args.save_stats_dir:
+        print(f"Raw JSON stats will be saved to: {args.save_stats_dir}")
+    print(f"Stage detail CSV: {args.stage_detail}")
+    print(f"Operator detail CSV: {args.operator_detail}")
 
     for query_id, query_file in query_files:
         with open(query_file, "r", encoding="utf-8") as f:
             sql = f.read().strip().rstrip(';')
         if not sql:
-            print(f"警告: 查询 {query_id} 内容为空，跳过")
+            print(f"Warning: Query {query_id} is empty, skipping")
             continue
 
         for dop in dop_values:
-            print(f"\n处理查询 {query_id}, dop={dop} ...")
+            print(f"\nProcessing query {query_id}, dop={dop} ...")
             session_params = build_session_headers(args.session_params, dop)
 
-            # 预热
+            # Warmup runs
             if args.warmup > 0:
-                print(f"  预热 {args.warmup} 次...")
+                print(f"  Warming up {args.warmup} times...")
                 for w in range(1, args.warmup + 1):
                     _ = run_query_once_subtract(args.presto_url, args.catalog, args.schema,
-                                                sql, session_params, args.timeout)
+                                                sql, session_params, args.timeout,
+                                                w, dop, query_id, args)   # run_number = w (but not recorded in summary)
                     if w % 5 == 0:
-                        print(f"    已完成 {w}/{args.warmup} 次预热")
+                        print(f"    Completed {w}/{args.warmup} warmups")
 
-            # 正式运行
+            # Measured runs
             run_times = []
             for r in range(1, args.runs + 1):
-                print(f"  运行第 {r} 次...")
+                print(f"  Run {r}...")
                 t = run_query_once_subtract(args.presto_url, args.catalog, args.schema,
-                                            sql, session_params, args.timeout)
+                                            sql, session_params, args.timeout,
+                                            r, dop, query_id, args)
                 if t is not None:
                     run_times.append(t)
-                    print(f"    耗时: {t:.2f} ms")
+                    print(f"    Runtime: {t:.2f} ms")
                 else:
-                    print(f"    第 {r} 次失败")
-                with open(detail_file, "a", newline="") as f:
+                    print(f"    Run {r} FAILED")
+
+                # Write per‑run detail
+                with open(args.detail, "a", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([query_id, dop, r, f"{t:.2f}" if t else "FAILED"])
 
+            # Summary for this (query, dop)
             if run_times:
                 avg_time = sum(run_times) / len(run_times)
                 min_time = min(run_times)
                 max_time = max(run_times)
                 run_times_str = ",".join(f"{x:.2f}" for x in run_times)
             else:
-                avg_time = min_time = max_time = 0
+                avg_time = min_time = max_time = 0.0
                 run_times_str = ""
-            with open(summary_file, "a", newline="") as f:
+            with open(args.output, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([query_id, dop, len(run_times),
                                  f"{avg_time:.2f}", f"{min_time:.2f}", f"{max_time:.2f}", run_times_str])
 
-            print(f"  查询 {query_id}, dop={dop} 完成，成功次数: {len(run_times)}/{args.runs}, 平均: {avg_time:.2f} ms")
+            print(f"  Query {query_id}, dop={dop} done. Successful runs: {len(run_times)}/{args.runs}, avg: {avg_time:.2f} ms")
 
-    print("\n实验完成！")
-    print(f"摘要文件: {summary_file}")
-    print(f"详细文件: {detail_file}")
+    print("\nBenchmark completed!")
+    print(f"Summary:  {args.output}")
+    print(f"Per‑run:  {args.detail}")
+    print(f"Stage:    {args.stage_detail}")
+    print(f"Operator: {args.operator_detail}")
+    if args.save_stats_dir:
+        print(f"Raw JSON: {args.save_stats_dir}")
+
 
 if __name__ == "__main__":
     main()

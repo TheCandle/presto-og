@@ -5,4 +5,19 @@
     <name>dfs.replication</name>
     <value>1</value>
   </property>
+  <property>
+    <name>dfs.client.socket-timeout</name>
+    <value>600000</value>  <!-- 10 分钟，单位毫秒 -->
+    <description>客户端 socket 超时时间</description>
+  </property>
+  <property>
+    <name>dfs.datanode.socket.write.timeout</name>
+    <value>600000</value>
+    <description>DataNode 写超时</description>
+  </property>
+  <property>
+    <name>dfs.datanode.socket.read.timeout</name>
+    <value>600000</value>
+    <description>DataNode 读超时</description>
+  </property>
 </configuration>
