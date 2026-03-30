@@ -11,7 +11,7 @@ set -e  # 遇到错误立即退出
 
 # -------------------- 配置参数 --------------------
 HIVE_CONTAINER="presto-og-hive-server-1"      # Hive 容器名
-LOCAL_DATA_DIR="/home/candle/og-tpch-workspace/tpch-data"  # 宿主机数据目录
+LOCAL_DATA_DIR="/home/yjh/og-tpch-workspace/tpch-data"  # 宿主机数据目录
 CONTAINER_DATA_DIR="/opt/tpch-data"             # 容器内临时数据目录
 HIVE_DB="tpch_test"                              # Hive 数据库名
 KEEP_TEXT_TABLES=false                           # 是否保留文本表 (true/false)

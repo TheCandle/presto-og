@@ -29,6 +29,7 @@ services:
     image: thecandle66/hadoop-datanode:2.0.0-hadoop2.7.4-java8
     volumes:
       - datanode:/hadoop/dfs/data
+      - ./datanode-hadoop-conf:/etc/hadoop:ro   # 新增这一行
     env_file:
       - ./hadoop-hive.env
     environment:
@@ -46,7 +47,7 @@ services:
       - ./hadoop-hive.env
     volumes:
       - ./init_hive.sh:/opt/hive/init_hive.sh  # 将脚本挂载到容器中 
-      - /home/candle/og-tpch-workspace/tpch-data:/opt/tpch-data 
+      - /home/yjh/og-tpch-workspace/tpch-data:/opt/tpch-data 
     environment: 
       HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
       SERVICE_PRECONDITION: "hive-metastore:9083"
@@ -94,6 +95,7 @@ services:
     # image: thecandle66/my-worker:centos9
     # image: presto/prestissimo-runtime:centos9
     image: thecandle66/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime-debug:centos9
     platform: linux/amd64
     container_name: prestissimo-worker-1
     hostname: worker-1
@@ -136,6 +138,50 @@ services:
   #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
   #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
   
+  # worker-3:
+  #   image: thecandle66/prestissimo-runtime:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-3
+  #   hostname: worker-3
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7779
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-3/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+
+  # worker-4:
+  #   image: thecandle66/prestissimo-runtime:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-4
+  #   hostname: worker-4
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7780
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-4/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+ 
   presto-cli:
     image: my-presto-cli:latest
     depends_on:

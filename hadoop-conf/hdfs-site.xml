@@ -20,4 +20,12 @@
     <value>600000</value>
     <description>DataNode 读超时</description>
   </property>
+  <property>
+    <name>dfs.datanode.max.xcievers</name>
+    <value>8192</value> <!-- 根据需要增加到更高的值 -->
+  </property>
+  <property>
+    <name>dfs.datanode.max.transfer.threads</name>
+    <value>8192</value>   <!-- 适当增大，根据并发需求调整 -->
+  </property>
 </configuration>

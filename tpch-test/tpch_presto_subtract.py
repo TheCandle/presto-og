@@ -27,12 +27,12 @@ DEFAULT_CATALOG = "hive"
 DEFAULT_SCHEMA = "tpch_test"
 DEFAULT_WARMUP = 2
 DEFAULT_RUNS = 3
-DEFAULT_DOP_LIST = "1"
-DEFAULT_SESSION_PARAMS = []
+DEFAULT_DOP_LIST = "64"
+DEFAULT_SESSION_PARAMS = ["dynamic_filtering = true;"]
 DEFAULT_QUERY_DIR = "./tpch-queries"
 DEFAULT_OUTPUT = "presto_results.csv"
 DEFAULT_DETAIL = "presto_detail.csv"
-DEFAULT_TIMEOUT = 600
+DEFAULT_TIMEOUT = 1500
 DEFAULT_STATS_DIR = "./tpch-stats"          # if set, raw JSON is saved
 DEFAULT_STAGE_DETAIL = "stage_detail.csv"
 DEFAULT_OPERATOR_DETAIL = "operator_detail.csv"
