@@ -27,8 +27,8 @@ DEFAULT_CATALOG = "hive"
 DEFAULT_SCHEMA = "tpch_test"
 DEFAULT_WARMUP = 2
 DEFAULT_RUNS = 3
-DEFAULT_DOP_LIST = "64"
-DEFAULT_SESSION_PARAMS = ["dynamic_filtering = true;"]
+DEFAULT_DOP_LIST = "16"
+DEFAULT_SESSION_PARAMS = ["task_concurrency=64"]
 DEFAULT_QUERY_DIR = "./tpch-queries"
 DEFAULT_OUTPUT = "presto_results.csv"
 DEFAULT_DETAIL = "presto_detail.csv"
@@ -37,6 +37,25 @@ DEFAULT_STATS_DIR = "./tpch-stats"          # if set, raw JSON is saved
 DEFAULT_STAGE_DETAIL = "stage_detail.csv"
 DEFAULT_OPERATOR_DETAIL = "operator_detail.csv"
 
+def run_analyze(presto_url: str, catalog: str, schema: str, timeout: int = 300) -> bool:
+    """
+    Execute ANALYZE on all TPCH tables (customer, orders, lineitem, supplier, nation, region).
+    Returns True if all succeeded, False otherwise.
+    """
+    tables = ["customer", "orders", "lineitem", "supplier", "nation", "region", "part", "partsupp"]
+    success = True
+    for table in tables:
+        sql = f"ANALYZE {catalog}.{schema}.{table}"
+        print(f"  Running ANALYZE on {table}...", file=sys.stderr)
+        final_resp, query_id = execute_query_follow_next_uri(
+            presto_url, catalog, schema, sql, [], timeout
+        )
+        if final_resp is None or final_resp.get("stats", {}).get("state") != "FINISHED":
+            print(f"  ERROR: ANALYZE on {table} failed", file=sys.stderr)
+            success = False
+        else:
+            print(f"  ANALYZE on {table} finished", file=sys.stderr)
+    return success
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Presto TPCH 测试脚本 with detailed stage/operator stats")
@@ -71,6 +90,9 @@ def parse_args():
     parser.add_argument("--operator-detail", default=DEFAULT_OPERATOR_DETAIL,
                         help="Operator‑level detail CSV file (default: %(default)s)")
 
+    parser.add_argument("--skip-analyze", action="store_true",
+                    help="Skip running ANALYZE before benchmark")
+
     return parser.parse_args()
 
 
@@ -98,8 +120,12 @@ def parse_time_str(time_str: str) -> Optional[float]:
 def build_session_headers(base_params: List[str], dop: int) -> List[str]:
     """Add task_concurrency to session parameters, replacing any existing."""
     dop_param = f"max_drivers_per_task={dop}"
+    # task_param = f"max_tasks_per_stage = 8"
+    # partition_buffer_param = f"native_max_page_partitioning_buffer_size = 268435456"
     filtered = [p for p in base_params if not p.startswith("max_drivers_per_task=")]
     filtered.append(dop_param)
+    # filtered.append(task_param)
+    # filtered.append(partition_buffer_param)
     return filtered
 
 
@@ -363,6 +389,12 @@ def main():
         print(f"Raw JSON stats will be saved to: {args.save_stats_dir}")
     print(f"Stage detail CSV: {args.stage_detail}")
     print(f"Operator detail CSV: {args.operator_detail}")
+
+    # --- 新增：运行 ANALYZE ---
+    if not args.skip_analyze:
+        print("\n=== Collecting table statistics (ANALYZE) ===")
+        if not run_analyze(args.presto_url, args.catalog, args.schema, args.timeout):
+            print("Warning: ANALYZE failed for some tables, but continuing...", file=sys.stderr)
 
     for query_id, query_file in query_files:
         with open(query_file, "r", encoding="utf-8") as f:
