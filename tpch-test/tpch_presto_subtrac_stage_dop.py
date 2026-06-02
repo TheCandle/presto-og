@@ -36,6 +36,7 @@ DEFAULT_TIMEOUT = 1500
 DEFAULT_STATS_DIR = "./tpch-stats"          # if set, raw JSON is saved
 DEFAULT_STAGE_DETAIL = "stage_detail.csv"
 DEFAULT_OPERATOR_DETAIL = "operator_detail.csv"
+DEFAULT_STAGE_DOP_FILE = os.path.join(os.path.dirname(__file__), "query_stage_dop")
 
 def run_analyze(presto_url: str, catalog: str, schema: str, timeout: int = 300) -> bool:
     """
@@ -89,6 +90,8 @@ def parse_args():
                         help="Stage‑level detail CSV file (default: %(default)s)")
     parser.add_argument("--operator-detail", default=DEFAULT_OPERATOR_DETAIL,
                         help="Operator‑level detail CSV file (default: %(default)s)")
+    parser.add_argument("--stage-dop-file", default=DEFAULT_STAGE_DOP_FILE,
+                        help="CSV file mapping query_id/stage_id -> dop (default: %(default)s)")
 
     parser.add_argument("--skip-analyze", action="store_true",
                     help="Skip running ANALYZE before benchmark")
@@ -127,6 +130,32 @@ def build_session_headers(base_params: List[str], dop: int) -> List[str]:
     # filtered.append(task_param)
     # filtered.append(partition_buffer_param)
     return filtered
+
+
+def load_query_stage_dop(stage_dop_file: str) -> Dict[int, Dict[int, int]]:
+    """
+    Load stage dop mapping from CSV:
+      query_id,stage_id,dop
+    Returns: {query_id: {stage_id: dop}}
+    """
+    mapping: Dict[int, Dict[int, int]] = {}
+    with open(stage_dop_file, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if not row:
+                continue
+            qi = int(row["query_id"])
+            si = int(row["stage_id"])
+            dop = int(row["dop"])
+            mapping.setdefault(qi, {})[si] = dop
+    return mapping
+
+
+def build_native_stage_max_drivers(stage_to_dop: Dict[int, int]) -> str:
+    """
+    Convert {stage_id: dop} to "0:1,1:8,2:8,..."
+    """
+    return ",".join(f"{stage_id}:{dop}" for stage_id, dop in sorted(stage_to_dop.items()))
 
 
 def execute_query_follow_next_uri(presto_url: str, catalog: str, schema: str, sql: str,
@@ -347,6 +376,21 @@ def run_query_once_subtract(presto_url: str, catalog: str, schema: str, sql: str
 def main():
     args = parse_args()
 
+    # Load native_stage_max_drivers mapping (optional but expected for your workflow).
+    query_stage_dop: Dict[int, Dict[int, int]] = {}
+    native_stage_max_drivers_by_query: Dict[int, str] = {}
+    if args.stage_dop_file and os.path.isfile(args.stage_dop_file):
+        query_stage_dop = load_query_stage_dop(args.stage_dop_file)
+        native_stage_max_drivers_by_query = {
+            qid: build_native_stage_max_drivers(stage_map)
+            for qid, stage_map in query_stage_dop.items()
+        }
+        print(f"Loaded stage dop mapping from: {args.stage_dop_file} "
+              f"(queries={len(native_stage_max_drivers_by_query)})")
+    else:
+        print(f"Warning: stage dop file not found: {args.stage_dop_file}. "
+              f"Will run without native_stage_max_drivers.", file=sys.stderr)
+
     # Parse dop list
     try:
         dop_values = [int(x.strip()) for x in args.dop_list.split(",")]
@@ -403,9 +447,20 @@ def main():
             print(f"Warning: Query {query_id} is empty, skipping")
             continue
 
+        native_stage_max_drivers = native_stage_max_drivers_by_query.get(query_id)
+        if native_stage_max_drivers is None:
+            print(f"Warning: No stage dop mapping for query {query_id}, "
+                  f"native_stage_max_drivers will not be set for this query.", file=sys.stderr)
+
         for dop in dop_values:
             print(f"\nProcessing query {query_id}, dop={dop} ...")
             session_params = build_session_headers(args.session_params, dop)
+            # if native_stage_max_drivers:
+            #     # X-Presto-Session header parsing splits on ',' between properties.
+            #     # native_stage_max_drivers value itself is comma-separated, so we percent-encode commas.
+            #     # Also: don't wrap the value in quotes; quotes are treated as literal characters by config parsing.
+            #     encoded = native_stage_max_drivers.replace(",", "%2C")
+            #     session_params.append(f"native_stage_max_drivers={encoded}")
 
             # Warmup runs
             if args.warmup > 0:

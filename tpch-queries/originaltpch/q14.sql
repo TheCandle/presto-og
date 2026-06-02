@@ -1,6 +1,3 @@
-EXPLAIN ANALYZE
--- using 1750075004 as a seed to the RNG
-
 
 select
 	100.00 * sum(case

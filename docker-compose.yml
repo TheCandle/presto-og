@@ -7,6 +7,7 @@ services:
       - namenode:/hadoop/dfs/name
     environment:
       - CLUSTER_NAME=test
+      # - HDFS-SITE.XML_dfs.replication=1
     #   - HADOOP_HEAPSIZE=1024          # 限制 namenode JVM 堆大小为 1GB
     env_file:
       - ./hadoop-hive.env
@@ -34,6 +35,7 @@ services:
       - ./hadoop-hive.env
     environment:
       SERVICE_PRECONDITION: "namenode:50070"
+      # - HDFS-SITE.XML_dfs.replication=1
     ports:
       - "50075:50075"
     # ulimits:
@@ -93,8 +95,8 @@ services:
 
   worker-1:
     # image: thecandle66/my-worker:centos9
-    # image: presto/prestissimo-runtime:centos9
-    image: thecandle66/prestissimo-runtime:centos9
+    image: presto/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime:centos9
     # image: thecandle66/prestissimo-runtime-debug:centos9
     platform: linux/amd64
     container_name: prestissimo-worker-1
@@ -117,7 +119,9 @@ services:
     entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
 
   worker-2:
-    image: thecandle66/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime:centos9
+    image: presto/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime-debug:centos9
     platform: linux/amd64
     container_name: prestissimo-worker-2
     hostname: worker-2
@@ -139,7 +143,9 @@ services:
     entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
   
   worker-3:
-    image: thecandle66/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime:centos9
+    image: presto/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime-debug:centos9
     platform: linux/amd64
     container_name: prestissimo-worker-3
     hostname: worker-3
@@ -161,7 +167,9 @@ services:
     entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
 
   worker-4:
-    image: thecandle66/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime:centos9
+    image: presto/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime-debug:centos9
     platform: linux/amd64
     container_name: prestissimo-worker-4
     hostname: worker-4
@@ -181,6 +189,103 @@ services:
       - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
       - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
     entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+
+  worker-5:
+    # image: thecandle66/prestissimo-runtime:centos9
+    image: presto/prestissimo-runtime:centos9
+    # image: thecandle66/prestissimo-runtime-debug:centos9
+    platform: linux/amd64
+    container_name: prestissimo-worker-5
+    hostname: worker-5
+    environment:
+      - SERVER_HOST=coordinator
+      - SERVER_PORT=8082
+      - WORKER_PORT=7781
+      - HADOOP_HOME=/opt/hadoop-2.7.4
+      - HADOOP_CONF_DIR=/etc/hadoop/conf
+      - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+    depends_on:
+      - coordinator
+    volumes:
+      - ./hadoop-home:/opt/hadoop-2.7.4:ro
+      - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+      - ./worker-5/etc:/opt/presto-server/etc
+      - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+      - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+    entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+
+
+  # worker-6:
+  #   # image: thecandle66/prestissimo-runtime:centos9
+  #   image: presto/prestissimo-runtime:centos9
+  #   # image: thecandle66/prestissimo-runtime-debug:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-6
+  #   hostname: worker-6
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7782
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-6/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+
+  # worker-7:
+  #   # image: thecandle66/prestissimo-runtime:centos9
+  #   image: presto/prestissimo-runtime:centos9
+  #   # image: thecandle66/prestissimo-runtime-debug:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-7
+  #   hostname: worker-7
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7783
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-7/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+
+  # worker-8:
+  #   # image: thecandle66/prestissimo-runtime:centos9
+  #   image: presto/prestissimo-runtime:centos9
+  #   # image: thecandle66/prestissimo-runtime-debug:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-8
+  #   hostname: worker-8
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7784
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-8/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
  
   presto-cli:
     image: my-presto-cli:latest

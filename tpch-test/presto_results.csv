@@ -1,0 +1,2 @@
+query,dop,runs,avg_time_ms,min_time_ms,max_time_ms,run_times_ms
+14,16,3,1739.76,1646.44,1833.80,"1833.80,1739.04,1646.44"

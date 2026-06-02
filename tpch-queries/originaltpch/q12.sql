@@ -1,5 +1,3 @@
--- using 1750075004 as a seed to the RNG
-
 
 select
 	l_shipmode,

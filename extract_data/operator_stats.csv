@@ -1,0 +1,22 @@
+query_id;plan_id;operator_type;child_plan_ids;l_input_rows;r_input_rows;output_rows;execution_time_ms;peak_memory_bytes;dop
+query_1;;ERROR: Query 20260424_075552_00024_hqctu failed: Unknown error;;;;;;;
+query_2;;ERROR: Query 20260424_075553_00025_hqctu failed: Unknown error;;;;;;;
+query_3;;ERROR: Query 20260424_075553_00026_hqctu failed: Unknown error;;;;;;;
+query_4;;ERROR: Query 20260424_075553_00027_hqctu failed: Unknown error;;;;;;;
+query_5;;ERROR: Query 20260424_075553_00028_hqctu failed: Unknown error;;;;;;;
+query_6;;ERROR: Query 20260424_075553_00029_hqctu failed: Unknown error;;;;;;;
+query_7;;ERROR: Query 20260424_075553_00030_hqctu failed: Unknown error;;;;;;;
+query_8;;ERROR: Query 20260424_075553_00031_hqctu failed: Unknown error;;;;;;;
+query_9;;ERROR: Query 20260424_075553_00032_hqctu failed: Unknown error;;;;;;;
+query_10;;ERROR: Query 20260424_075554_00033_hqctu failed: Unknown error;;;;;;;
+query_11;;ERROR: Query 20260424_075554_00034_hqctu failed: Unknown error;;;;;;;
+query_12;;ERROR: Query 20260424_075554_00035_hqctu failed: Unknown error;;;;;;;
+query_13;;ERROR: Query 20260424_075554_00036_hqctu failed: Unknown error;;;;;;;
+query_14;;ERROR: Query 20260424_075554_00037_hqctu failed: Unknown error;;;;;;;
+query_15;;ERROR: Query 20260424_075554_00038_hqctu failed: Unknown error;;;;;;;
+query_16;;ERROR: Query 20260424_075554_00039_hqctu failed: Unknown error;;;;;;;
+query_17;;ERROR: Query 20260424_075554_00040_hqctu failed: Unknown error;;;;;;;
+query_18;;ERROR: Query 20260424_075555_00041_hqctu failed: Unknown error;;;;;;;
+query_19;;ERROR: Query 20260424_075555_00042_hqctu failed: Unknown error;;;;;;;
+query_20;;ERROR: Query 20260424_075555_00043_hqctu failed: Unknown error;;;;;;;
+query_21;;ERROR: Query 20260424_075555_00044_hqctu failed: Unknown error;;;;;;;
