@@ -37,8 +37,6 @@ presto_errfile = './output/presto_errfile'
 
 
 
-
-
 def log_warn(message):
     print(f"[WARN] {message}")
 
@@ -119,65 +117,65 @@ def start_db():
 	
 def og_execute_sql(sql, out_file, err_file):
     try:
-        # 执行 SQL
+        command = ["timeout", str(TIMEOUT), "bash", "-c", f"echo \"{sql}\" | {GSQL_CMD}"]
+        print("TP负载")
+        print("调用命令:", " ".join(command))
         result = subprocess.run(
-            ["timeout", str(TIMEOUT), "bash", "-c", f"echo \"{sql}\" | {GSQL_CMD}"],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
-
-        # 保存输出和错误日志
-        with open(out_file, 'wb') as out_f, open(err_file, 'wb') as err_f:
-            out_f.write(result.stdout)
-            err_f.write(result.stderr)
-
-        return result.returncode, result.stdout.decode(), result.stderr.decode()
+        output = result.stdout.decode()
+        error_output = result.stderr.decode()
+        if output:
+            print(output, end="")
+        if error_output:
+            print(error_output, end="", file=sys.stderr)
+        return result.returncode, output, error_output
     except subprocess.CalledProcessError as e:
         log_error(f"执行 SQL 时出现错误: {str(e)}")
         return e.returncode, "", str(e)
 
 def presto_execute_sql(sql, out_file, err_file):
     try:
-        # Presto JAR 命令
         command = [
             'java', 
-            '-jar', presto_jar_path,              # 使用变量替代路径
-            '--server', 'localhost:8082',         # Presto 服务器的地址
-            '--catalog', 'hive',                  # Presto 使用的 catalog
-            '--schema', 'tpch_test',              # 你想查询的 schema
-            '--execute', 'SELECT * FROM region LIMIT 10'  # 你想执行的 SQL 查询
+            '-jar', presto_jar_path,
+            '--server', 'localhost:8082',
+            '--catalog', 'hive',
+            '--schema', 'tpch_test',
+            '--execute', sql
         ]
-        # 执行命令
+        print("AP负载")
+        print("调用命令:", " ".join(command))
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        
-
-        # 保存输出和错误日志
-        with open(out_file, 'w') as out_f, open(err_file, 'w') as err_f:
-            out_f.write(result.stdout)
-            err_f.write(result.stderr)
-
-        return result.returncode, result.stdout, result.stderr
+        output = result.stdout
+        error_output = result.stderr
+        if output:
+            print(output, end="")
+        if error_output:
+            print(error_output, end="", file=sys.stderr)
+        return result.returncode, output, error_output
     except subprocess.CalledProcessError as e:
         log_error(f"执行 SQL 时出现错误: {str(e)}")
         return e.returncode, "", str(e)
 
-def query_is_ap(query)
-   if("ap" in query)
-       return True
-   return False
+def query_is_ap(query):
+    query_lower = query.lower()
+    ap_keywords = ["sum", "avg", "min", "max", "count", "join", "group by"]
+    return any(keyword in query_lower for keyword in ap_keywords)
 
-def query_is_tp(query)
-   if("tp" in query)
-       return True
-   return False
+def query_is_tp(query):
+    if("tp" in query):
+        return True
+    return False
+
 
 def send_query_to_db(query):
     if(query_is_ap(query)):
-        og_execute_sql(query, og_outfile, og_errfile)
-    elif(query_is_tp(query)):
-        presto_execute_sql(query, og_outfile, og_errfile)
+        presto_execute_sql(query, presto_outfile, presto_errfile)
     else:
-        print("查询不包含 ap 或 tp") 
+        og_execute_sql(query, og_outfile, og_errfile)
 
 # 主程序
 def main():

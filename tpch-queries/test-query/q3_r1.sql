@@ -23,4 +23,3 @@ group by
 order by
 	revenue desc,
 	o_orderdate;
-where rownum <= 10;

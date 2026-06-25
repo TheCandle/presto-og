@@ -18,4 +18,4 @@ where
 		where
 			l_partkey = p_partkey
 	);
-where rownum <= -1;
+

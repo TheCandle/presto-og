@@ -33,4 +33,3 @@ group by
 order by
 	nation,
 	o_year desc;
-where rownum <= -1;

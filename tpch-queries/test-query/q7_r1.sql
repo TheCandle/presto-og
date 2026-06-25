@@ -40,4 +40,4 @@ order by
 	supp_nation,
 	cust_nation,
 	l_year;
-where rownum <= -1;
+

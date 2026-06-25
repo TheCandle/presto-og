@@ -190,29 +190,29 @@ services:
       - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
     entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
 
-  worker-5:
-    # image: thecandle66/prestissimo-runtime:centos9
-    image: presto/prestissimo-runtime:centos9
-    # image: thecandle66/prestissimo-runtime-debug:centos9
-    platform: linux/amd64
-    container_name: prestissimo-worker-5
-    hostname: worker-5
-    environment:
-      - SERVER_HOST=coordinator
-      - SERVER_PORT=8082
-      - WORKER_PORT=7781
-      - HADOOP_HOME=/opt/hadoop-2.7.4
-      - HADOOP_CONF_DIR=/etc/hadoop/conf
-      - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
-    depends_on:
-      - coordinator
-    volumes:
-      - ./hadoop-home:/opt/hadoop-2.7.4:ro
-      - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
-      - ./worker-5/etc:/opt/presto-server/etc
-      - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
-      - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
-    entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
+  # worker-5:
+  #   # image: thecandle66/prestissimo-runtime:centos9
+  #   image: presto/prestissimo-runtime:centos9
+  #   # image: thecandle66/prestissimo-runtime-debug:centos9
+  #   platform: linux/amd64
+  #   container_name: prestissimo-worker-5
+  #   hostname: worker-5
+  #   environment:
+  #     - SERVER_HOST=coordinator
+  #     - SERVER_PORT=8082
+  #     - WORKER_PORT=7781
+  #     - HADOOP_HOME=/opt/hadoop-2.7.4
+  #     - HADOOP_CONF_DIR=/etc/hadoop/conf
+  #     - LD_LIBRARY_PATH=/opt/hadoop/lib/native:/usr/lib/jvm/java-1.8.0-openjdk/jre/lib/amd64/server
+  #   depends_on:
+  #     - coordinator
+  #   volumes:
+  #     - ./hadoop-home:/opt/hadoop-2.7.4:ro
+  #     - ./hadoop-conf:/etc/hadoop/conf:ro         # 挂载配置目录
+  #     - ./worker-5/etc:/opt/presto-server/etc
+  #     - ./hadoop-native:/opt/hadoop/lib/native:ro   # 挂载本地库
+  #     - ./worker-entrypoint-wrapper.sh:/worker-entrypoint-wrapper.sh:ro
+  #   entrypoint: ["/worker-entrypoint-wrapper.sh"]   # 使用包装脚本作为入口
 
 
   # worker-6:

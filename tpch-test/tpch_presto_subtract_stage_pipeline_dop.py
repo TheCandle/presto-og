@@ -393,8 +393,8 @@ def main():
         print(f"Query dir not found, fallback to: {resolved_query_dir}")
 
     query_files = []
-    # for i in range(1, 23):
-    for i in range(14, 15):
+    for i in range(1, 23):
+    # for i in range(14, 15):
         # support both q1.sql and q1_r1.sql (or q1_r*.sql)
         direct = os.path.join(resolved_query_dir, f"q{i}.sql")
         if os.path.isfile(direct):
